@@ -90,7 +90,7 @@ return {
                 else
                     cb({
                         type = 'executable',
-                        command = '/home/eseidel/.virtualenvs/debugpy/bin/python',
+                        command = '/opt/homebrew/bin/python',
                         args = { '-m', 'debugpy.adapter' },
                         options = {
                             source_filetype = 'python',

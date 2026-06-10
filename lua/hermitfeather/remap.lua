@@ -82,3 +82,5 @@ vim.keymap.set('n', '<leader>d', vim.diagnostic.open_float, { desc = "Show diagn
 
 vim.keymap.set('n', '<leader>sv', '<cmd>vsplit<CR>')
 vim.keymap.set('n', '<leader>sh', '<cmd>split<CR>')
+
+vim.keymap.set('n', '<leader>ka', '<cmd>lua require("hermitfeather.keybind-arena").start()<CR>', { desc = "Open Keybind Arena" })
