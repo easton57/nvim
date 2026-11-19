@@ -2,8 +2,6 @@ return {
 	"neovim/nvim-lspconfig",
 	dependencies = {
 		"williamboman/mason.nvim",
-		--"frostplexx/mason-bridge.nvim",
-		"stevearc/conform.nvim",
 		"williamboman/mason-lspconfig.nvim",
 		"hrsh7th/cmp-nvim-lsp",
 		"hrsh7th/cmp-buffer",
@@ -13,27 +11,17 @@ return {
 		"L3MON4D3/LuaSnip",
 		"saadparwaiz1/cmp_luasnip",
 		"j-hui/fidget.nvim",
-		"mfussenegger/nvim-lint",
 	},
 
 	config = function()
-		require("mason").setup()
-		--require("mason-bridge").setup()
-		require("conform").setup({
-			--formatters_by_ft = require("mason-bridge").get_formatters(),
-			formatters_by_ft = {
-				lua = { "stylua" },
-				rust = { "ast-grep" },
-				javascript = { "prettier" },
-				python = { "black" },
-				html = { "prettier" },
-				css = { "prettier" },
-				go = { "dingo" },
-				markdown = { "markdownlint" },
-			},
-			format_on_save = { timeout_ms = 500, lsp_fallback = true },
-		})
-		--require("lint").linters_by_ft = require("mason-bridge").get_linters()
+		-- Formatters/linters live in format-lint.lua; mason setup in mason.lua.
+
+		-- Rust linting: run clippy on save through rust-analyzer (if clippy is installed).
+		if vim.fn.executable("cargo-clippy") == 1 then
+			vim.lsp.config("rust_analyzer", {
+				settings = { ["rust-analyzer"] = { check = { command = "clippy" } } },
+			})
+		end
 
 		local cmp = require("cmp")
 		local cmp_lsp = require("cmp_nvim_lsp")

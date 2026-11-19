@@ -49,97 +49,37 @@ return {
                 dap.set_breakpoint(vim.fn.input("Breakpoint condition: "))
             end, { desc = "Debug: Set Conditional Breakpoint" })
 
-            -- Adapter Configs
-            -- Rust
-            dap.adapters.lldb = {
-                type = 'executable',
-                command = '/usr/bin/lldb-dap', -- adjust as needed, must be absolute path
-                name = 'lldb'
-            }
-            dap.configurations.cpp = {
-            {
-                    name = 'Launch',
-                    type = 'lldb',
-                    request = 'launch',
-                    program = function()
-                        return vim.fn.input('Path to executable: ', vim.fn.getcwd() .. '/target/debug/', 'file')
-                    end,
-                    cwd = '${workspaceFolder}',
-                    stopOnEntry = false,
-                    args = {},
-                },
-            }
-            dap.configurations.rust = dap.configurations.cpp
-            dap.configurations.c = dap.configurations.cpp
+            -- Adapters for python, go, c/c++/rust are set up by mason-nvim-dap below.
 
-            -- Python
-            dap.adapters.python = function(cb, config)
-            if config.request == 'attach' then
-                ---@diagnostic disable-next-line: undefined-field
-                local port = (config.connect or config).port
-                ---@diagnostic disable-next-line: undefined-field
-                local host = (config.connect or config).host or '127.0.0.1'
-                    cb({
-                        type = 'server',
-                        port = assert(port, '`connect.port` is required for a python `attach` configuration'),
-                        host = host,
-                        options = {
-                            source_filetype = 'python',
-                        },
-                    })
-                else
-                    cb({
-                        type = 'executable',
-                        command = '/opt/homebrew/bin/python',
-                        args = { '-m', 'debugpy.adapter' },
-                        options = {
-                            source_filetype = 'python',
-                        },
-                    })
-                end
+            -- JavaScript / TypeScript (js-debug-adapter, installed via mason)
+            local js_debug = vim.fn.stdpath("data") .. "/mason/bin/js-debug-adapter"
+            for _, adapter in ipairs({ "pwa-node", "node" }) do
+                dap.adapters[adapter] = {
+                    type = "server",
+                    host = "localhost",
+                    port = "${port}",
+                    executable = { command = js_debug, args = { "${port}" } },
+                }
             end
-            dap.configurations.python = {
-  {
-            -- The first three options are required by nvim-dap
-            type = 'python'; -- the type here established the link to the adapter definition: `dap.adapters.python`
-            request = 'launch';
-            name = "Launch file";
-
-            -- Options below are for debugpy, see https://github.com/microsoft/debugpy/wiki/Debug-configuration-settings for supported options
-
-            program = "${file}"; -- This configuration will launch the current file if used.
-            pythonPath = function()
-            -- debugpy supports launching an application with a different interpreter then the one used to launch debugpy itself.
-            -- The code below looks for a `venv` or `.venv` folder in the current directly and uses the python within.
-            -- You could adapt this - to for example use the `VIRTUAL_ENV` environment variable.
-                    local cwd = vim.fn.getcwd()
-                        if vim.fn.executable(cwd .. '/venv/bin/python') == 1 then
-                            return cwd .. '/venv/bin/python'
-                        elseif vim.fn.executable(cwd .. '/.venv/bin/python') == 1 then
-                            return cwd .. '/.venv/bin/python'
-                        else
-                            return '/usr/bin/python'
-                        end
-                    end;
-                },
-            }
-
-            -- Go
-            dap.adapters.go = {
-                type = 'executable';
-                command = 'node';
-                args = {os.getenv('HOME') .. '/dev/golang/vscode-go/extension/dist/debugAdapter.js'};
-            }
-            dap.configurations.go = {
-            {
-                type = 'go';
-                name = 'Debug';
-                request = 'launch';
-                showLog = false;
-                program = "${file}";
-                    dlvToolPath = vim.fn.exepath('/home/eseidel/.local/share/nvim/mason/bin/dlv')  -- Adjust to where delve is installed
-                },
-            }
+            for _, ft in ipairs({ "javascript", "typescript", "javascriptreact", "typescriptreact" }) do
+                dap.configurations[ft] = {
+                    {
+                        type = "pwa-node",
+                        request = "launch",
+                        name = "Node: Launch file",
+                        program = "${file}",
+                        cwd = "${workspaceFolder}",
+                        sourceMaps = true,
+                    },
+                    {
+                        type = "pwa-node",
+                        request = "attach",
+                        name = "Node: Attach to process",
+                        processId = require("dap.utils").pick_process,
+                        cwd = "${workspaceFolder}",
+                    },
+                }
+            end
         end
     },
     {
@@ -240,13 +180,50 @@ return {
             "neovim/nvim-lspconfig",
         },
         config = function()
+            local function venv_python()
+                local venv = os.getenv("VIRTUAL_ENV")
+                if venv then
+                    return venv .. "/bin/python"
+                end
+                local cwd = vim.fn.getcwd()
+                for _, dir in ipairs({ "venv", ".venv" }) do
+                    if vim.fn.executable(cwd .. "/" .. dir .. "/bin/python") == 1 then
+                        return cwd .. "/" .. dir .. "/bin/python"
+                    end
+                end
+                return vim.fn.exepath("python3")
+            end
+
             require("mason-nvim-dap").setup({
                 ensure_installed = {
-                    "delve",
+                    "python", -- debugpy
+                    "delve", -- go
+                    "codelldb", -- c / c++ / rust
+                    "js", -- js-debug-adapter (configured in nvim-dap above)
                 },
                 automatic_installation = true,
                 handlers = {
                     function(config)
+                        require("mason-nvim-dap").default_setup(config)
+                    end,
+                    python = function(config)
+                        for _, c in ipairs(config.configurations) do
+                            c.pythonPath = venv_python
+                        end
+                        require("mason-nvim-dap").default_setup(config)
+                    end,
+                    codelldb = function(config)
+                        -- Default to target/debug/ for cargo projects, cwd otherwise.
+                        local function program()
+                            local dir = vim.fn.getcwd() .. "/"
+                            if vim.fn.filereadable(dir .. "Cargo.toml") == 1 then
+                                dir = dir .. "target/debug/"
+                            end
+                            return vim.fn.input("Path to executable: ", dir, "file")
+                        end
+                        for _, c in ipairs(config.configurations) do
+                            c.program = program
+                        end
                         require("mason-nvim-dap").default_setup(config)
                     end,
                     delve = function(config)
